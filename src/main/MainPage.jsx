@@ -1,9 +1,11 @@
 import { lazy, Suspense, useState, useCallback, useEffect } from 'react';
-import { Paper } from '@mui/material';
+import { Box, CssBaseline, IconButton, Fab } from '@mui/material';
 import { makeStyles } from 'tss-react/mui';
 import { useTheme } from '@mui/material/styles';
 import useMediaQuery from '@mui/material/useMediaQuery';
-import { useDispatch, useSelector } from 'react-redux';
+import MenuIcon from '@mui/icons-material/Menu';
+import AddLocationIcon from '@mui/icons-material/AddLocation';
+
 import DeviceList from './DeviceList';
 import BottomMenu from '../common/components/BottomMenu';
 import StatusCard from '../common/components/StatusCard';
@@ -18,89 +20,114 @@ const MainMap = lazy(() => import('./MainMap'));
 
 const useStyles = makeStyles()((theme) => ({
   root: {
-    height: '100%',
-  },
-  sidebar: {
-    pointerEvents: 'none',
     display: 'flex',
     flexDirection: 'column',
-    [theme.breakpoints.up('md')]: {
-      position: 'fixed',
-      left: 0,
-      top: 0,
-      height: `calc(100% - ${theme.spacing(3)})`,
-      width: theme.dimensions.drawerWidthDesktop,
-      margin: theme.spacing(1.5),
-      zIndex: 3,
-    },
+    height: '100vh',
+    backgroundColor: theme.palette.background.default,
+  },
+  container: {
+    display: 'flex',
+    flex: 1,
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  sidebar: {
+    display: 'flex',
+    flexDirection: 'column',
+    width: theme.dimensions.drawerWidthDesktop,
+    flexShrink: 0,
+    transition: 'transform 0.3s ease-in-out',
+    backgroundColor: theme.palette.background.paper,
+    zIndex: 1300,
+    position: 'relative',
     [theme.breakpoints.down('md')]: {
+      width: '80%',
+      maxWidth: '300px',
+      position: 'fixed',
+      top: 0,
+      left: 0,
       height: '100%',
-      width: '100%',
+      boxShadow: theme.shadows[4],
     },
   },
-  header: {
-    pointerEvents: 'auto',
-    zIndex: 6,
-  },
-  footer: {
-    pointerEvents: 'auto',
-    zIndex: 5,
-  },
-  middle: {
+  mainContent: {
     flex: 1,
     display: 'grid',
-    minHeight: 0,
+    gridTemplateRows: 'auto 1fr auto',
+    width: '100%',
+    position: 'relative',
   },
-  contentMap: {
-    pointerEvents: 'auto',
-    gridArea: '1 / 1',
+  mapContainer: {
+    gridRow: '1 / 2',
+    height: '100%',
+    width: '100%',
+    position: 'relative',
   },
-  contentList: {
-    pointerEvents: 'auto',
-    gridArea: '1 / 1',
-    zIndex: 4,
-    display: 'flex',
-    minHeight: 0,
+  deviceListContainer: {
+    gridRow: '2 / 3',
+    overflowY: 'auto',
+    backgroundColor: theme.palette.background.paper,
+    height: '100%',
+  },
+  footer: {
+    gridRow: '3 / 4',
+  },
+  toggleButton: {
+    position: 'fixed',
+    top: theme.spacing(1),
+    left: theme.spacing(1),
+    zIndex: 1400,
+  },
+  fab: {
+    position: 'fixed',
+    bottom: theme.spacing(2),
+    right: theme.spacing(2),
+    zIndex: 1400,
   },
 }));
 
-const MainPage = () => {
+const InteractiveTrackingLayout = () => {
   const { classes } = useStyles();
-  const dispatch = useDispatch();
   const theme = useTheme();
-
-  const desktop = useMediaQuery(theme.breakpoints.up('md'));
+  const isDesktop = useMediaQuery(theme.breakpoints.up('md'));
+  const dispatch = useDispatch();
 
   const mapOnSelect = useAttributePreference('mapOnSelect', true);
 
   const selectedDeviceId = useSelector((state) => state.devices.selectedId);
   const positions = useSelector((state) => state.session.positions);
+
   const [filteredPositions, setFilteredPositions] = useState([]);
-  const selectedPosition = filteredPositions.find(
-    (position) => selectedDeviceId && position.deviceId === selectedDeviceId,
-  );
-
   const [filteredDevices, setFilteredDevices] = useState([]);
-
   const [keyword, setKeyword] = useState('');
-  const [filter, setFilter] = usePersistedState('filter', {
-    statuses: [],
-    groups: [],
-  });
+  const [filter, setFilter] = usePersistedState('filter', { statuses: [], groups: [] });
   const [filterSort, setFilterSort] = usePersistedState('filterSort', '');
   const [filterMap, setFilterMap] = usePersistedState('filterMap', false);
 
-  const [devicesOpen, setDevicesOpen] = useState(desktop);
+  const [devicesOpen, setDevicesOpen] = useState(isDesktop);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
   const [eventsOpen, setEventsOpen] = useState(false);
+  const [hoveredDeviceId, setHoveredDeviceId] = useState(null);
 
-  const onEventsClick = useCallback(() => setEventsOpen(true), [setEventsOpen]);
+  const selectedPosition = filteredPositions.find(
+    (pos) => selectedDeviceId && pos.deviceId === selectedDeviceId
+  );
 
+  // Toggle Sidebar
+  const toggleSidebar = () => {
+    setSidebarOpen((prev) => !prev);
+  };
+
+  const onEventsClick = useCallback(() => setEventsOpen(true), []);
+
+  // Close sidebar on mobile if map is used for selection
   useEffect(() => {
-    if (!desktop && mapOnSelect && selectedDeviceId) {
+    if (!isDesktop && mapOnSelect && selectedDeviceId) {
       setDevicesOpen(false);
     }
-  }, [desktop, mapOnSelect, selectedDeviceId]);
+  }, [isDesktop, mapOnSelect, selectedDeviceId]);
 
+  // Use filter hook
   useFilter(
     keyword,
     filter,
@@ -108,73 +135,120 @@ const MainPage = () => {
     filterMap,
     positions,
     setFilteredDevices,
-    setFilteredPositions,
+    setFilteredPositions
   );
 
+  // Map marker hover handlers
+  const handleMarkerHover = (deviceId) => {
+    setHoveredDeviceId(deviceId);
+  };
+
+  const handleMarkerClick = (deviceId) => {
+    dispatch(devicesActions.selectId(deviceId));
+  };
+
+  // Center map button (example)
+  const centerMap = () => {
+    // You can implement map centering logic here
+  };
+
   return (
-    <div className={classes.root}>
-      {desktop && (
-        <Suspense fallback={null}>
-          <MainMap
-            filteredPositions={filteredPositions}
-            selectedPosition={selectedPosition}
-            onEventsClick={onEventsClick}
-          />
-        </Suspense>
+    <Box className={classes.root}>
+      <CssBaseline />
+
+      {/* Sidebar toggle button for mobile */}
+      {!isDesktop && (
+        <IconButton
+          color="primary"
+          aria-label="Toggle menu"
+          onClick={toggleSidebar}
+          className={classes.toggleButton}
+        >
+          <MenuIcon />
+        </IconButton>
       )}
-      <div className={classes.sidebar}>
-        <Paper square elevation={3} className={classes.header}>
-          <MainToolbar
-            filteredDevices={filteredDevices}
-            devicesOpen={devicesOpen}
-            setDevicesOpen={setDevicesOpen}
-            keyword={keyword}
-            setKeyword={setKeyword}
-            filter={filter}
-            setFilter={setFilter}
-            filterSort={filterSort}
-            setFilterSort={setFilterSort}
-            filterMap={filterMap}
-            setFilterMap={setFilterMap}
-          />
-        </Paper>
-        <div className={classes.middle}>
-          {!desktop && (
-            <div className={classes.contentMap}>
-              <Suspense fallback={null}>
-                <MainMap
-                  filteredPositions={filteredPositions}
-                  selectedPosition={selectedPosition}
-                  onEventsClick={onEventsClick}
-                />
-              </Suspense>
-            </div>
-          )}
-          <Paper
-            square
-            className={classes.contentList}
-            style={devicesOpen ? {} : { visibility: 'hidden' }}
-          >
-            <DeviceList devices={filteredDevices} />
-          </Paper>
-        </div>
-        {desktop && (
-          <div className={classes.footer}>
-            <BottomMenu />
-          </div>
-        )}
-      </div>
-      <EventsDrawer open={eventsOpen} onClose={() => setEventsOpen(false)} />
-      {selectedDeviceId && (
-        <StatusCard
-          deviceId={selectedDeviceId}
-          position={selectedPosition}
-          onClose={() => dispatch(devicesActions.selectId(null))}
-          desktopPadding={theme.dimensions.drawerWidthDesktop}
+
+      {/* Sidebar */}
+      <Box
+        className={classes.sidebar}
+        sx={{
+          transform: isDesktop
+            ? 'none'
+            : sidebarOpen
+            ? 'none'
+            : 'translateX(-100%)',
+        }}
+      >
+        <MainToolbar
+          filteredDevices={filteredDevices}
+          devicesOpen={devicesOpen}
+          setDevicesOpen={setDevicesOpen}
+          keyword={keyword}
+          setKeyword={setKeyword}
+          filter={filter}
+          setFilter={setFilter}
+          filterSort={filterSort}
+          setFilterSort={setFilterSort}
+          filterMap={filterMap}
+          setFilterMap={setFilterMap}
         />
-      )}
-    </div>
+        <Box
+          className={classes.deviceListContainer}
+          role="region"
+          aria-label="Device List"
+        >
+          <DeviceList devices={filteredDevices} />
+        </Box>
+      </Box>
+
+      {/* Main content area */}
+      <Box className={classes.container}>
+        {/* Map */}
+        <Box className={classes.mapContainer} role="region" aria-label="Map View">
+          <Suspense fallback={<div>Loading Map...</div>}>
+            <MainMap
+              filteredPositions={filteredPositions}
+              selectedPosition={selectedPosition}
+              onEventsClick={onEventsClick}
+              hoveredDeviceId={hoveredDeviceId}
+              onMarkerHover={handleMarkerHover}
+              onMarkerClick={handleMarkerClick}
+            />
+          </Suspense>
+        </Box>
+
+        {/* Status Card */}
+        {selectedDeviceId && (
+          <StatusCard
+            deviceId={selectedDeviceId}
+            position={selectedPosition}
+            onClose={() => dispatch(devicesActions.selectId(null))}
+            desktopPadding={theme.dimensions.drawerWidthDesktop}
+          />
+        )}
+
+        {/* Floating Button to center map */}
+        <Fab
+          color="primary"
+          aria-label="Center Map"
+          onClick={centerMap}
+          className={classes.fab}
+        >
+          <AddLocationIcon />
+        </Fab>
+
+        {/* Bottom Menu for mobile */}
+        {!isDesktop && (
+          <Box className={classes.footer}>
+            <BottomMenu />
+          </Box>
+        )}
+      </Box>
+
+      {/* Events Drawer */}
+      <EventsDrawer open={eventsOpen} onClose={() => setEventsOpen(false)} />
+    </Box>
   );
 };
 
-export default MainPage;
+export default InteractiveTrackingLayout;
